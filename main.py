@@ -1,5 +1,6 @@
 import random
 import time
+from threading import Thread
 
 
 def launch_rocket(delay, countdown):
@@ -16,6 +17,13 @@ def rockets_args(n):
         n -= 1
 
 
+def run_threads():
+    threads = [Thread(target=launch_rocket, args=(d, c)) for d, c in rockets_args(100)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+
 if __name__ == "__main__":
-    for d, c in rockets_args(100):
-        launch_rocket(d, c)
+    run_threads()
