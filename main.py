@@ -1,21 +1,20 @@
 import heapq
 import random
 import time
+import types
 from enum import Enum, auto
 
 
+@types.coroutine
 def sleep(secs):
     yield Op.WAIT, secs
 
 
-def launch_rocket(delay, countdown):
-    # state: WAITING
-    yield from sleep(delay)  # without from it yields the generator, not its items
-    # state: COUNTING
+async def launch_rocket(delay, countdown):
+    await sleep(delay)
     for i in reversed(range(countdown)):
         print(f"{i + 1}...")
-        yield from sleep(1)
-    # state: LAUNCHING
+        await sleep(1)
     print("Rocket was launched")
 
 
@@ -48,7 +47,6 @@ def run_fsm(rockets):
         try:
             op, arg = launch.send(None)
         except StopIteration:
-            # it's equivalent to STOP
             continue
 
         if op is Op.WAIT:
