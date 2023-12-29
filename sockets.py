@@ -3,6 +3,7 @@ import selectors
 import socket
 import sys
 import time
+import types
 from enum import Enum, auto
 
 
@@ -11,11 +12,13 @@ class Op(Enum):
     SEND = auto()
 
 
+@types.coroutine
 def recv():
     value = yield selectors.EVENT_READ, (Op.RECV, None)
     return value
 
 
+@types.coroutine
 def send(arg):
     value = yield selectors.EVENT_WRITE, (Op.SEND, arg)
     return value
@@ -59,15 +62,15 @@ def run_server(handler, port=8080):
                         sel.register(conn, sel_event, sel_data)
 
 
-def handle_doubler_connection(conn, addr):
+async def handle_doubler_connection(conn, addr):
     print("Connected by", addr)
     while True:
-        data = yield from recv()
+        data = await recv()
         if not data:
             break
         n = int(data.decode())
         res = f"{n * 2}\n".encode()
-        yield from send(res)
+        await send(res)
     print("Disconnected from", addr)
 
 
