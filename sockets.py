@@ -1,30 +1,37 @@
 import random
+import selectors
 import socket
 import sys
 import time
-from threading import Thread
 
 
 def doubler_server(port=8080):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", port))
+        # only non-blocking sockets can be added to a selector
+        s.setblocking(False)
         s.listen(5)
+        sel = selectors.DefaultSelector()
+        # add a server socket to the selector and make it read-only (only to accept connections)
+        sel.register(s, selectors.EVENT_READ)
         while True:
-            conn, addr = s.accept()
-            t = Thread(target=handle_connection, args=(conn, addr))
-            t.start()
-
-
-def handle_connection(conn, addr):
-    print("Connected by", addr)
-    with conn:
-        while True:
-            data = conn.recv(1024)
-            if not data:
-                break
-            n = int(data.decode())
-            res = f"{n * 2}\n".encode()
-            conn.send(res)
+            # sel.select() blocks until an event occurs (exactly what we need)
+            for key, mask in sel.select():
+                if key.fileobj is s:
+                    conn, addr = s.accept()
+                    print("Connected by", addr)
+                    # add a connection to the selector to retrieve data from it
+                    conn.setblocking(False)
+                    sel.register(conn, selectors.EVENT_READ)
+                else:
+                    conn = key.fileobj
+                    data = conn.recv(1024)
+                    if not data:
+                        conn.close()
+                        sel.unregister(conn)
+                    n = int(data.decode())
+                    res = f"{n * 2}\n".encode()
+                    conn.send(res)  # rely on luck, because a socket sending buffer may be full
 
 
 def doubler_client(port=8080):
