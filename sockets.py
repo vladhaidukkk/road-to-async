@@ -2,16 +2,17 @@ import random
 import socket
 import sys
 import time
+from threading import Thread
 
 
 def doubler_server(port=8080):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", port))
-        # start listening to the socket, maximum 5 connections at a time
         s.listen(5)
         while True:
             conn, addr = s.accept()
-            handle_connection(conn, addr)
+            t = Thread(target=handle_connection, args=(conn, addr))
+            t.start()
 
 
 def handle_connection(conn, addr):
@@ -28,7 +29,6 @@ def handle_connection(conn, addr):
 
 def doubler_client(port=8080):
     with socket.create_connection(("127.0.0.1", port)) as s:
-        # create a file interface to work with the socket
         f = s.makefile("rw", buffering=1, newline="\n")
         while True:
             n = random.randrange(10)
