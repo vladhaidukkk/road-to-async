@@ -3,39 +3,72 @@ import selectors
 import socket
 import sys
 import time
+from enum import Enum, auto
 
 
-def doubler_server(port=8080):
+class Op(Enum):
+    RECV = auto()
+    SEND = auto()
+
+
+def recv():
+    value = yield selectors.EVENT_READ, (Op.RECV, None)
+    return value
+
+
+def send(arg):
+    value = yield selectors.EVENT_WRITE, (Op.SEND, arg)
+    return value
+
+
+def run_server(handler, port=8080):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", port))
         s.setblocking(False)
         s.listen(5)
         sel = selectors.DefaultSelector()
         sel.register(s, selectors.EVENT_READ)
+        conn_handler_map = {}
         while True:
             for key, mask in sel.select():
                 if key.fileobj is s:
                     conn, addr = s.accept()
-                    print("Connected by", addr)
                     conn.setblocking(False)
-                    sel.register(conn, selectors.EVENT_READ, ("read", None))
+                    conn_handler_map[conn] = handler(conn, addr)
+                    sel_event, sel_data = conn_handler_map[conn].send(None)
+                    sel.register(conn, sel_event, sel_data)
                 else:
                     conn = key.fileobj
                     op, arg = key.data
-                    # a single socket shouldn't be added multiple times to the same selector
                     sel.unregister(conn)
-                    if op == "read":
+
+                    if op is Op.RECV:
                         data = conn.recv(1024)
-                        if not data:
-                            conn.close()
-                        n = int(data.decode())
-                        res = f"{n * 2}\n".encode()
-                        sel.register(conn, selectors.EVENT_WRITE, ("write", res))
-                    elif op == "write":
+                    elif op is Op.SEND:
                         conn.send(arg)
-                        sel.register(conn, selectors.EVENT_READ, ("read", None))
+                        data = None
                     else:
                         assert False, op
+
+                    try:
+                        sel_event, sel_data = conn_handler_map[conn].send(data)
+                    except StopIteration:
+                        conn.close()
+                        del conn_handler_map[conn]
+                    else:
+                        sel.register(conn, sel_event, sel_data)
+
+
+def handle_doubler_connection(conn, addr):
+    print("Connected by", addr)
+    while True:
+        data = yield from recv()
+        if not data:
+            break
+        n = int(data.decode())
+        res = f"{n * 2}\n".encode()
+        yield from send(res)
+    print("Disconnected from", addr)
 
 
 def doubler_client(port=8080):
@@ -50,7 +83,7 @@ def doubler_client(port=8080):
 
 if __name__ == "__main__":
     if sys.argv[1] == "server":
-        doubler_server()
+        run_server(handle_doubler_connection)
     else:
         assert sys.argv[1] == "client", sys.argv[1]
         doubler_client()
